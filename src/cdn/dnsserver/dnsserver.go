@@ -29,7 +29,8 @@ func intToString(i int) string {
 
 func handleRequest(packet *udpPacket) *udpPacket {
 	fmt.Println(packet)
-	return nil
+	packet.body = "hello"
+	return packet
 }
 
 func udpRecvSocket(port int, recvPackets chan *udpPacket) {
@@ -59,8 +60,33 @@ func udpRecvSocket(port int, recvPackets chan *udpPacket) {
 	}
 }
 
-func udpSendSocket(port int, sendPackets chan *udpPacket) {
+func udpSendSocket(port int, sendPackets chan *udpPacket, done chan bool) {
+	if port == 65535 {
+		port -= 1
+	} else {
+		port += 1
+	}
+	var serverAddr, err = net.ResolveUDPAddr("udp", ":"+intToString(port))
+	if errorCheck(err) {
+		done <- true
+		return
+	}
+	for {
+		var packet = <-sendPackets
+		var connection, err = net.DialUDP("udp", serverAddr, &(packet.addr))
+		if errorCheck(err) {
+			done <- true
+			return
+		}
 
+		_, err = connection.Write([]byte(packet.body))
+		if errorCheck(err) {
+			done <- true
+			return
+		}
+
+		connection.Close()
+	}
 }
 
 func dnsServer(port int, name string) {
@@ -70,14 +96,19 @@ func dnsServer(port int, name string) {
 	// channels for sending and receiving packets
 	var sendPackets = make(chan *udpPacket, 1)
 	var recvPackets = make(chan *udpPacket, 1)
+	// done channel for sending packets
+	var done = make(chan bool, 1)
 
 	// starting up udp socket in another thread
-	go udpSendSocket(port, sendPackets)
+	go udpSendSocket(port, sendPackets, done)
 	go udpRecvSocket(port, recvPackets)
 
 	for {
 		select {
-		case <-signals:
+		case sig := <-signals:
+			fmt.Println("Caught signal: ", sig)
+			return
+		case <-done:
 			return
 		case packet, ok := <-recvPackets:
 			if !ok {
@@ -113,4 +144,5 @@ func main() {
 	}
 	fmt.Println(*port, *name)
 	dnsServer(*port, *name)
+	fmt.Println("Exiting...")
 }
