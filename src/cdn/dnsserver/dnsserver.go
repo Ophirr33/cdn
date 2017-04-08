@@ -11,9 +11,12 @@ import (
 )
 
 type udpPacket struct {
-	body string
+	body []byte
 	addr net.UDPAddr
 }
+
+// type answer struct {
+// 	name: []byte,
 
 func errorCheck(err error) bool {
 	if err != nil {
@@ -29,7 +32,7 @@ func intToString(i int) string {
 
 func handleRequest(packet *udpPacket) *udpPacket {
 	fmt.Println(packet)
-	packet.body = "hello"
+	packet.body = []byte("hello")
 	return packet
 }
 
@@ -55,7 +58,7 @@ func udpRecvSocket(port int, recvPackets chan *udpPacket) {
 			return
 		}
 		if length > 0 {
-			recvPackets <- &udpPacket{string(packetBuffer[:length]), *addr}
+			recvPackets <- &udpPacket{packetBuffer[:length], *addr}
 		}
 	}
 }
@@ -79,7 +82,7 @@ func udpSendSocket(port int, sendPackets chan *udpPacket, done chan bool) {
 			return
 		}
 
-		_, err = connection.Write([]byte(packet.body))
+		_, err = connection.Write(packet.body)
 		if errorCheck(err) {
 			done <- true
 			return
