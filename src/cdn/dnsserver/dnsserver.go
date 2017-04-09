@@ -114,6 +114,7 @@ func byteArraysToDomain(b [][]byte) string {
 
 func (packet *dnsPacket) queryDNSToAnswer() error {
 	packet.qr = true
+	packet.aa = true
 	packet.ancount = 1
 	packet.answer = &dnsAnswer{
 		packet.question.qname,
@@ -219,6 +220,7 @@ func nameToBytes(name [][]byte) ([]byte, error) {
 		result = append(result, byte(bLen))
 		result = append(result, bytes...)
 	}
+	result = append(result, 0)
 	return result, nil
 }
 
@@ -271,19 +273,7 @@ func handleRequest(packet *udpPacket, name string) *udpPacket {
 	return packet
 }
 
-func udpRecvSocket(port int, recvPackets chan *udpPacket) {
-	var serverAddr, err = net.ResolveUDPAddr("udp", ":"+intToString(port))
-	if errorCheck(err) {
-		close(recvPackets)
-		return
-	}
-	connection, err := net.ListenUDP("udp", serverAddr)
-	if errorCheck(err) {
-		close(recvPackets)
-		return
-	}
-	defer connection.Close()
-
+func udpRecvSocket(connection *net.UDPConn, recvPackets chan *udpPacket) {
 	// using 512 byte buffer as that is the max dns payload size
 	var packetBuffer = make([]byte, 512)
 	for {
@@ -298,32 +288,14 @@ func udpRecvSocket(port int, recvPackets chan *udpPacket) {
 	}
 }
 
-func udpSendSocket(port int, sendPackets chan *udpPacket, done chan bool) {
-	if port == 65535 {
-		port -= 1
-	} else {
-		port += 1
-	}
-	var serverAddr, err = net.ResolveUDPAddr("udp", ":"+intToString(port))
-	if errorCheck(err) {
-		done <- true
-		return
-	}
+func udpSendSocket(connection *net.UDPConn, sendPackets chan *udpPacket, done chan bool) {
 	for {
 		var packet = <-sendPackets
-		var connection, err = net.DialUDP("udp", serverAddr, &(packet.addr))
+		_, err := connection.WriteToUDP(packet.body, &(packet.addr))
 		if errorCheck(err) {
 			done <- true
 			return
 		}
-
-		_, err = connection.Write(packet.body)
-		if errorCheck(err) {
-			done <- true
-			return
-		}
-
-		connection.Close()
 	}
 }
 
@@ -337,9 +309,14 @@ func dnsServer(port int, name string) {
 	// done channel for sending packets
 	var done = make(chan bool, 1)
 
-	// starting up udp socket in another thread
-	go udpSendSocket(port, sendPackets, done)
-	go udpRecvSocket(port, recvPackets)
+	// starting up udp socket, read and write operations done in other threads
+	var connection, err = net.ListenUDP("udp", &(net.UDPAddr{Port: port}))
+	if errorCheck(err) {
+		return
+	}
+	defer connection.Close()
+	go udpSendSocket(connection, sendPackets, done)
+	go udpRecvSocket(connection, recvPackets)
 
 	for {
 		select {
