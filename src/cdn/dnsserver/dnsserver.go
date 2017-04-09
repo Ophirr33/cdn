@@ -73,7 +73,7 @@ type dnsQuestion struct {
 }
 
 type dnsAnswer struct {
-	aname    []byte
+	aname    [][]byte
 	atype    uint16
 	aclass   uint16
 	ttl      uint32
@@ -91,6 +91,38 @@ func errorCheck(err error) bool {
 
 func intToString(i int) string {
 	return fmt.Sprint(i)
+}
+
+func boolToByte(b bool) uint8 {
+	if b {
+		return 1
+	} else {
+		return 0
+	}
+}
+
+func byteArraysToDomain(b [][]byte) string {
+	result := ""
+	for i, ch := range b {
+		result += string(ch)
+		if i+1 < len(b) {
+			result += "."
+		}
+	}
+	return result
+}
+
+func (packet *dnsPacket) queryDNSToAnswer() error {
+	packet.qr = true
+	packet.ancount = 1
+	packet.answer = &dnsAnswer{
+		packet.question.qname,
+		1,                  // A
+		1,                  // IN
+		0,                  // no caching yet
+		4,                  // one ip address
+		[]byte{8, 8, 8, 8}} // google
+	return nil
 }
 
 func (packet *dnsPacket) parseDNS(bytes []byte) error {
@@ -152,16 +184,90 @@ func (question *dnsQuestion) parseDNSQuestion(bytes []byte) ([]byte, error) {
 	return bytes[currentByte+4:], nil
 }
 
-func handleRequest(packet *udpPacket) *udpPacket {
+func (dns *dnsPacket) dnsToBytes() ([]byte, error) {
+	result := make([]byte, 12, 512)
+	binary.BigEndian.PutUint16(result, dns.id)
+	result[2] = (boolToByte(dns.qr) << 7) + (dns.opcode & 15 << 3)
+	result[2] += (boolToByte(dns.aa) << 2) + (boolToByte(dns.tc) << 1) + boolToByte(dns.rd)
+	result[3] = (boolToByte(dns.ra) << 7) + (dns.rcode & 15)
+	binary.BigEndian.PutUint16(result[4:], dns.qdcount)
+	binary.BigEndian.PutUint16(result[6:], dns.ancount)
+	qbytes, err := dns.question.writeToBytes()
+	if errorCheck(err) {
+		return nil, err
+	}
+	abytes, err := dns.answer.writeToBytes()
+	if errorCheck(err) {
+		return nil, err
+	}
+	result = append(result, qbytes...)
+	result = append(result, abytes...)
+	if len(result) > 512 {
+		return nil, errors.New("Too much data for dns packet")
+	} else {
+		return result, nil
+	}
+}
+
+func nameToBytes(name [][]byte) ([]byte, error) {
+	result := make([]byte, 0, 512)
+	for _, bytes := range name {
+		bLen := len(bytes)
+		if bLen >= 256 {
+			return nil, errors.New("Domain too long to be represented by a single byte")
+		}
+		result = append(result, byte(bLen))
+		result = append(result, bytes...)
+	}
+	return result, nil
+}
+
+func bigEndianBytes(u16 uint16) []byte {
+	result := make([]byte, 2)
+	binary.BigEndian.PutUint16(result, u16)
+	return result
+}
+
+func (question *dnsQuestion) writeToBytes() ([]byte, error) {
+	result, err := nameToBytes(question.qname)
+	if err != nil {
+		return nil, err
+	}
+	result = append(result, bigEndianBytes(question.qtype)...)
+	result = append(result, bigEndianBytes(question.qclass)...)
+	return result, nil
+}
+
+func (answer *dnsAnswer) writeToBytes() ([]byte, error) {
+	result, err := nameToBytes(answer.aname)
+	if err != nil {
+		return nil, err
+	}
+	result = append(result, bigEndianBytes(answer.atype)...)
+	result = append(result, bigEndianBytes(answer.aclass)...)
+	bttl := make([]byte, 4)
+	binary.BigEndian.PutUint32(bttl, answer.ttl)
+	result = append(result, bttl...)
+	result = append(result, bigEndianBytes(answer.rdlength)...)
+	result = append(result, answer.rdata...)
+	return result, nil
+}
+
+func handleRequest(packet *udpPacket, name string) *udpPacket {
 	// fmt.Println(packet)
 	var dns = &dnsPacket{}
 	var err = dns.parseDNS(packet.body)
 	fmt.Println("DNS Header: ", *dns)
 	fmt.Println("DNS Question: ", dns.question)
+	if errorCheck(err) || byteArraysToDomain(dns.question.qname) != name {
+		return nil
+	}
+	fmt.Println("DNS Domain: ", byteArraysToDomain(dns.question.qname))
+	dns.queryDNSToAnswer()
+	packet.body, err = dns.dnsToBytes()
 	if errorCheck(err) {
 		return nil
 	}
-	packet.body = []byte("hello")
 	return packet
 }
 
@@ -246,7 +352,7 @@ func dnsServer(port int, name string) {
 			if !ok {
 				return
 			}
-			var response = handleRequest(packet)
+			var response = handleRequest(packet, name)
 			if response != nil {
 				sendPackets <- response
 			}
