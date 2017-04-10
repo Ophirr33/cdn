@@ -9,7 +9,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"regexp"
 )
 
 func errorCheck(err error) bool {
@@ -54,39 +53,16 @@ func splitCarriageReturn(data []byte, atEOF bool) (advance int, token []byte, er
 
 func handleConnection(connection *net.TCPConn, origin string, client *http.Client) {
 	defer connection.Close()
-	path, err := getPath(connection)
+	req, err := http.ReadRequest(bufio.NewReader(connection))
 	if errorCheck(err) {
 		return
 	}
-	fmt.Println(path)
-	resp, err := client.Get(origin + path)
+	resp, err := client.Get(origin + req.URL.RequestURI())
 	if errorCheck(err) {
 		return
 	}
 	err = resp.Write(connection)
 	errorCheck(err)
-}
-
-func getPath(connection *net.TCPConn) (string, error) {
-	bufScanner := bufio.NewScanner(connection)
-	bufScanner.Split(splitCarriageReturn)
-	header := make([]string, 0, 10)
-	for bufScanner.Scan() {
-		line := bufScanner.Text()
-		if line == "" {
-			break
-		}
-		header = append(header, line)
-	}
-	if len(header) == 0 {
-		return "", errors.New("No Header to parse")
-	}
-	pathRegex := regexp.MustCompile(`^GET ([^\s]+) .*$`)
-	matches := pathRegex.FindStringSubmatch(header[0])
-	if len(matches) == 0 {
-		return "", errors.New("Could not parse path from Header")
-	}
-	return matches[1], nil
 }
 
 func main() {
