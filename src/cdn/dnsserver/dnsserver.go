@@ -355,7 +355,9 @@ func main() {
 		if *name == "" {
 			errMsg += "Name must be provided as a non-empty string."
 		}
-		errorCheck(errors.New(errMsg))
+		if errorCheck(errors.New(errMsg)) {
+			return
+		}
 	}
 	fmt.Println(*port, *name)
 	dnsServer(*port, *name)
