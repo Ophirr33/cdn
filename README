@@ -1,0 +1,44 @@
+Ceridwen Driskill, Ty Coghlan
+
+Roll Your Own CDN
+
+We have implemented our DNS server and HTTP server in Go. At this point in time,
+the DNS server does not run on the DNS host because Go is not installed on that
+host. The HTTP server code does run on the ec2 hosts, however at the moment we
+are seeing a difference in the responses to curl and wget (curl has no problem
+getting the file from our HTTP server but wget gets a 404 not found). Caching is
+not currently implemented, so every request to the HTTP server causes a request
+to the origin server.
+
+Both of our servers use a multithreaded approach. For the DNS server, we create
+a UDP listener on the given port. Then we spawn two threads using this listener,
+one for sending and one for receiving. The receiving thread is constantly trying
+to read from the UDP listener (a blocking call). When a packet is read, it is
+written to the received packets channel. The sending thread is constantly trying
+to read from the sending channel. When a packet is read off of this channel, the
+sending thread writes the packet to the UDP object.
+
+For the HTTP server, we create a TCP listener, and an HTTP client (for making GET
+requests to the origin server). In another thread, the listener constantly tries
+to accept TCP connections (a blocking call). When a connection is accepted, it is
+placed on a connections channel, and the listener tries to accept more connections.
+Our main loop reads from the connections channel. Whenever a connection is read off
+of the channel, a new thread is created to handle that connection.
+
+Our HTTP server uses Go's standard http package (not to be confused with
+http.server which we are not using) to parse HTTP requests. Our DNS server uses a
+DNS struct which contains the DNS header fields applicable for this project, as
+well as one pointer for a DNS question, and one for a DNS answer (both structs
+that we have defined). We parse incoming DNS using a combination of the binary
+package, and bit manipulation with Go's built in byte slices. To write one of our
+DNS structs into bytes, we use do effectively the reverse of our parsing.
+
+At the moment, we have not written a Makefile, as we have just been testing our
+code with the command: go run <script name> <arguments>, as it has been faster
+than compiling.
+
+We pair program all of our projects, and this was no exception. I (Ceri) started
+out typing up our code for the DNS server, and typed most of that up until we
+finalized writing our DNS packets into bytes, at which point Ty took over. He
+typed up the rest of the DNS server, all of the HTTP server, and our quick little
+parser for the popular_raw.html file.
