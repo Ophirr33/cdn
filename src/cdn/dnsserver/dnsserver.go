@@ -81,6 +81,7 @@ type dnsAnswer struct {
 	rdata    []byte
 }
 
+// errorCheck is a convenience function that will print errors to std error if there is one
 func errorCheck(err error) bool {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error: ", err)
@@ -89,10 +90,12 @@ func errorCheck(err error) bool {
 	return false
 }
 
+// intToString doesn't actually save us much typing...
 func intToString(i int) string {
 	return fmt.Sprint(i)
 }
 
+// boolToByte converts a bool to a byte...
 func boolToByte(b bool) uint8 {
 	if b {
 		return 1
@@ -101,6 +104,7 @@ func boolToByte(b bool) uint8 {
 	}
 }
 
+// bytearraysToDomain converts the byte arrays format of a domain to its string format
 func byteArraysToDomain(b [][]byte) string {
 	result := ""
 	for i, ch := range b {
@@ -112,6 +116,7 @@ func byteArraysToDomain(b [][]byte) string {
 	return result
 }
 
+// queryDNSToAnswer initialize a default dns packet that points to google
 func (packet *dnsPacket) queryDNSToAnswer() error {
 	packet.qr = true
 	packet.aa = true
@@ -126,6 +131,7 @@ func (packet *dnsPacket) queryDNSToAnswer() error {
 	return nil
 }
 
+// parseDNS parses a DNS packet from an array of bytes
 func (packet *dnsPacket) parseDNS(bytes []byte) error {
 	if len(bytes) < 12 {
 		return errors.New("DNS packet must be at least 12 bytes.")
@@ -185,6 +191,7 @@ func (question *dnsQuestion) parseDNSQuestion(bytes []byte) ([]byte, error) {
 	return bytes[currentByte+4:], nil
 }
 
+// dnsToBytes serializes the dns packet into a byte array
 func (dns *dnsPacket) dnsToBytes() ([]byte, error) {
 	result := make([]byte, 12, 512)
 	binary.BigEndian.PutUint16(result, dns.id)
@@ -210,6 +217,7 @@ func (dns *dnsPacket) dnsToBytes() ([]byte, error) {
 	}
 }
 
+// nameToBytes turns a byte arrays representation back into its bytes representation
 func nameToBytes(name [][]byte) ([]byte, error) {
 	result := make([]byte, 0, 512)
 	for _, bytes := range name {
@@ -224,12 +232,14 @@ func nameToBytes(name [][]byte) ([]byte, error) {
 	return result, nil
 }
 
+// bigEndianBytes is a convenience method that returns a uint16 as an array of Big Endian bytes
 func bigEndianBytes(u16 uint16) []byte {
 	result := make([]byte, 2)
 	binary.BigEndian.PutUint16(result, u16)
 	return result
 }
 
+// writeToBytes serializes a dnsQuestion into byte format
 func (question *dnsQuestion) writeToBytes() ([]byte, error) {
 	result, err := nameToBytes(question.qname)
 	if err != nil {
@@ -240,6 +250,7 @@ func (question *dnsQuestion) writeToBytes() ([]byte, error) {
 	return result, nil
 }
 
+// writeToBytes serializes a dnsAnswer into byte format
 func (answer *dnsAnswer) writeToBytes() ([]byte, error) {
 	result, err := nameToBytes(answer.aname)
 	if err != nil {
@@ -255,6 +266,7 @@ func (answer *dnsAnswer) writeToBytes() ([]byte, error) {
 	return result, nil
 }
 
+// handleRequest responds to the incoming udpPacket and returns the proper dns response
 func handleRequest(packet *udpPacket, name string) *udpPacket {
 	// fmt.Println(packet)
 	var dns = &dnsPacket{}
@@ -273,6 +285,7 @@ func handleRequest(packet *udpPacket, name string) *udpPacket {
 	return packet
 }
 
+// udpRecvsocket continuously listens for incoming udpPackets and sends them into the channel
 func udpRecvSocket(connection *net.UDPConn, recvPackets chan *udpPacket) {
 	// using 512 byte buffer as that is the max dns payload size
 	var packetBuffer = make([]byte, 512)
@@ -288,6 +301,7 @@ func udpRecvSocket(connection *net.UDPConn, recvPackets chan *udpPacket) {
 	}
 }
 
+// udpSendSocket continously listens for outgoing udpPackets and sends them through the socket
 func udpSendSocket(connection *net.UDPConn, sendPackets chan *udpPacket, done chan bool) {
 	for {
 		var packet = <-sendPackets
@@ -299,6 +313,7 @@ func udpSendSocket(connection *net.UDPConn, sendPackets chan *udpPacket, done ch
 	}
 }
 
+// dnsServer starts up a dns server that listens for dns answer queries for name on port port
 func dnsServer(port int, name string) {
 	var signals = make(chan os.Signal, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)

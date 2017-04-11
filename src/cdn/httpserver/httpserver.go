@@ -2,15 +2,17 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"flag"
 	"fmt"
 	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 )
 
+// errorCheck is a convenience method that will print to standard error if err is an Error
 func errorCheck(err error) bool {
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error: ", err)
@@ -19,38 +21,46 @@ func errorCheck(err error) bool {
 	return false
 }
 
+// httpServer takes in the port and the url of the origin server
+// It initializes a tcp socket and spawns go routines to handle incoming connections
 func httpServer(port int, origin string) {
+	var signals = make(chan os.Signal, 1)
+	var conns = make(chan *net.TCPConn, 1)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
 	listener, err := net.ListenTCP("tcp", &net.TCPAddr{Port: port})
+
+	go func() {
+		for {
+			connection, err := listener.AcceptTCP()
+			if errorCheck(err) {
+				close(signals)
+				return
+			}
+			conns <- connection
+		}
+	}()
+
 	client := &http.Client{}
 	if errorCheck(err) {
 		return
 	}
 	defer listener.Close()
 	for {
-		connection, err := listener.AcceptTCP()
-		if errorCheck(err) {
+		select {
+		case connection, ok := <-conns:
+			if !ok {
+				return
+			}
+			go handleConnection(connection, origin, client)
+		case <-signals:
+			listener.Close()
 			return
 		}
-		go handleConnection(connection, origin, client)
 	}
 }
 
-// Borrowed and tweaked from go's source code, as they don't provide an easy way to scan carriage returns
-func splitCarriageReturn(data []byte, atEOF bool) (advance int, token []byte, err error) {
-	if atEOF && len(data) == 0 {
-		return 0, nil, nil
-	}
-	r := bytes.IndexByte(data, '\r')
-	n := bytes.IndexByte(data[r+1:], '\n')
-	if r >= 0 && n == 0 {
-		return r + 2, data[:r], nil
-	}
-	if atEOF {
-		return len(data), data, nil
-	}
-	return 0, nil, nil
-}
-
+// handleConnection sends the incoming http request to the origin server
+// In the future it will filter incoming connections through a caching layer
 func handleConnection(connection *net.TCPConn, origin string, client *http.Client) {
 	defer connection.Close()
 	req, err := http.ReadRequest(bufio.NewReader(connection))
@@ -79,7 +89,7 @@ func main() {
 			errMsg += "Port number must be provided. "
 		}
 		if *origin == "" {
-			errMsg += "Origin URL must be provided as a non-empty string."
+			errMsg += "Origin URL must be provided as a non-empty string. e.g., http://origin.com:8080"
 		}
 		if errorCheck(errors.New(errMsg)) {
 			return
