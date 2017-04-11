@@ -116,18 +116,18 @@ func byteArraysToDomain(b [][]byte) string {
 	return result
 }
 
-// queryDNSToAnswer initialize a default dns packet that points to google
+// queryDNSToAnswer initialize a default dns packet that points to california
 func (packet *dnsPacket) queryDNSToAnswer() error {
 	packet.qr = true
 	packet.aa = true
 	packet.ancount = 1
 	packet.answer = &dnsAnswer{
 		packet.question.qname,
-		1,                  // A
-		1,                  // IN
-		0,                  // no caching yet
-		4,                  // one ip address
-		[]byte{8, 8, 8, 8}} // google
+		1, // A
+		1, // IN
+		0, // no caching yet
+		4, // one ip address
+		[]byte{54, 183, 23, 203}} // california
 	return nil
 }
 
