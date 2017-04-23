@@ -43,7 +43,7 @@ func (pingServer *pingServer) start() {
 			fmt.Fprintln(os.Stderr, "Could not parse ping output: ", string(out))
 			continue
 		}
-		split2 := bytes.Fields(split1[3])
+		split2 := bytes.Split(split1[3], []byte("/"))
 		fmt.Println(len(split2), "||", string(split1[3]))
 		if len(split2) != 4 {
 			fmt.Fprintln(os.Stderr, "Could not parse ping average: ", string(out))
