@@ -33,7 +33,13 @@ func (pingServer *pingServer) start() {
 		if errorCheck(err) {
 			continue
 		}
-		split1 := bytes.Fields(out)
+		split0 := bytes.Split(out, []byte("\n"))
+		if len(split0) < 1 {
+			fmt.Fprintln(os.Stderr, "Could not parse ping lines: ", string(out))
+			continue
+		}
+		split1 := bytes.Fields(split0[len(split0)-1])
+		fmt.Println(len(split1), "||", split1)
 		if len(split1) != 7 {
 			fmt.Fprintln(os.Stderr, "Could not parse ping output: ", string(out))
 			continue
