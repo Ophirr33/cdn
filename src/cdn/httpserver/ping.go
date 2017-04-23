@@ -21,7 +21,6 @@ func (pingServer *pingServer) start() {
 		if errorCheck(err) {
 			break
 		}
-		fmt.Println(line)
 		ip := net.ParseIP(strings.Replace(line, "\n", "", -1))
 		if ip == nil {
 			fmt.Fprintln(os.Stderr, "Could not parse ip address, skipping")
@@ -44,7 +43,6 @@ func (pingServer *pingServer) start() {
 			continue
 		}
 		split2 := bytes.Split(split1[3], []byte("/"))
-		fmt.Println(len(split2), "||", string(split1[3]))
 		if len(split2) != 4 {
 			fmt.Fprintln(os.Stderr, "Could not parse ping average: ", string(out))
 			continue
