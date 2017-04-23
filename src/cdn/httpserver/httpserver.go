@@ -76,6 +76,7 @@ func handleConnection(connection *net.TCPConn, origin string, client *http.Clien
 		if !errorCheck(err) {
 			resp.Write(connection)
 			errorCheck(err)
+			fmt.Println("Returned a cached response!")
 			return
 		}
 		// If there's an error then we try to grab it from the origin
@@ -111,7 +112,9 @@ func main() {
 	var bytesInMegabyte uint = 1000000
 	cache := &cache{}
 	cache.init(10*bytesInMegabyte, 6*bytesInMegabyte)
+	fmt.Println("here")
 	go cache.buildCache(*origin, "popular.txt")
+	fmt.Println("now here")
 	fmt.Println(*port, *origin)
 	httpServer(*port, *origin, cache)
 	fmt.Println("Exiting...")

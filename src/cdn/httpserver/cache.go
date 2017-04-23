@@ -7,16 +7,9 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"time"
 )
-
-// errorCheck is a convenience method that will print to standard error if err is an Error
-func errorCheck(err error) bool {
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "Error: ", err)
-		return true
-	}
-	return false
-}
 
 type cache struct {
 	memCacheSize         uint
@@ -115,6 +108,8 @@ func (cache *cache) getFromCache(path string) (*http.Response, error) {
 }
 
 func (cache *cache) buildCache(origin, popularFileName string) {
+	fmt.Println("Building cache")
+	now := time.Now()
 	client := &http.Client{}
 	f, err := os.Open(popularFileName)
 	if errorCheck(err) {
@@ -122,13 +117,35 @@ func (cache *cache) buildCache(origin, popularFileName string) {
 	}
 	defer f.Close()
 	scanner := bufio.NewScanner(f)
+	mutex := &sync.Mutex{}
+	var size uint
+	var wg sync.WaitGroup
 	for scanner.Scan() {
-		path := strings.Fields(scanner.Text())[0]
-		resp, err := client.Get(origin + path)
-		if !errorCheck(err) {
-			cache.addToCache(path, resp)
+		if size >= cache.diskCacheSize+cache.memCacheSize {
+			break
 		}
+		wg.Add(1)
+		go func(path string) {
+			defer wg.Done()
+			fmt.Println("Making get for ", origin+path)
+			resp, err := client.Get(origin + path)
+			if !errorCheck(err) {
+				mutex.Lock()
+				if resp.ContentLength > 0 && resp.ContentLength < int64(cache.diskCacheSize+cache.currentMemCacheSize) {
+					size += uint(resp.ContentLength)
+				}
+				fmt.Println("Added to cache: ",
+					cache.addToCache(path, resp),
+					" Size of Mem cache (MB): ",
+					float64(cache.currentMemCacheSize)/1000000.0,
+					" Size of Disk cache (MB): ",
+					float64(cache.currentDiskCacheSize)/1000000.0)
+				mutex.Unlock()
+			}
+		}(strings.Fields(scanner.Text())[0])
 	}
+	wg.Wait()
 	cache.built = true // Allow the cache to be used
-	fmt.Println("Built cache")
+	elapsed := time.Since(now)
+	fmt.Println("Built cache in ", elapsed)
 }
