@@ -68,6 +68,7 @@ func handleConnection(
 	client *http.Client,
 	cache *cache,
 	cdnAddr net.IP) {
+	fmt.Println("Handling connection from:", connection.RemoteAddr)
 	defer connection.Close()
 	if cdnAddr.Equal(net.ParseIP(connection.LocalAddr().String())) || true { // TODO: REMOVE || TRUE (USED FOR TESTING)
 		pingServer := pingServer{connection}
@@ -135,8 +136,13 @@ func main() {
 	cache.init(10*bytesInMegabyte, 6*bytesInMegabyte)
 	go cache.buildCache(*origin, "popular.txt")
 	var cdnAddr net.IP
-	for _, err := resolveCDNAddr(); !errorCheck(err); {
+  var err error
+	for {
 		cdnAddr, err = resolveCDNAddr()
+		if !errorCheck(err) {
+			break
+		}
+		fmt.Println("Loop")
 	}
 	fmt.Println(*port, *origin)
 	httpServer(*port, *origin, cache, cdnAddr)

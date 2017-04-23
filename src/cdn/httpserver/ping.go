@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 type pingServer struct {
@@ -19,7 +20,8 @@ func (ping *pingServer) start() {
 		if errorCheck(err) {
 			break
 		}
-		ip := net.ParseIP(line)
+		fmt.Println(line)
+		ip := net.ParseIP(strings.Replace(line, "\n", "", -1))
 		if ip == nil {
 			fmt.Fprintln(os.Stderr, "Could not parse ip address, skipping")
 			continue
