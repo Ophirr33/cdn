@@ -138,6 +138,7 @@ func main() {
 	for addr, err := resolveCDNAddr(); !errorCheck(err); {
 		addr, err = resolveCDNAddr()
 	}
+	cdnAddr = addr
 	fmt.Println(*port, *origin)
 	httpServer(*port, *origin, cache, cdnAddr)
 	fmt.Println("Exiting...")
