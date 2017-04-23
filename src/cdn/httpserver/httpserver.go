@@ -135,10 +135,9 @@ func main() {
 	cache.init(10*bytesInMegabyte, 6*bytesInMegabyte)
 	go cache.buildCache(*origin, "popular.txt")
 	var cdnAddr net.IP
-	for addr, err := resolveCDNAddr(); !errorCheck(err); {
-		addr, err = resolveCDNAddr()
+	for cdnAddr, err := resolveCDNAddr(); !errorCheck(err); {
+		cdnAddr, err = resolveCDNAddr()
 	}
-	cdnAddr = addr
 	fmt.Println(*port, *origin)
 	httpServer(*port, *origin, cache, cdnAddr)
 	fmt.Println("Exiting...")
