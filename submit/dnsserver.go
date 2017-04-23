@@ -117,18 +117,17 @@ func byteArraysToDomain(b [][]byte) string {
 }
 
 // queryDNSToAnswer initialize a default dns packet that points to california
-func (packet *dnsPacket) queryDNSToAnswer(ip net.IP, r router) error {
-	var returnIP = net.ParseIP(r.getServer(ip.String()))
+func (packet *dnsPacket) queryDNSToAnswer() error {
 	packet.qr = true
 	packet.aa = true
 	packet.ancount = 1
 	packet.answer = &dnsAnswer{
 		packet.question.qname,
-		1,        // A
-		1,        // IN
-		0,        // no caching yet
-		4,        // one ip address
-		returnIP} // california
+		1, // A
+		1, // IN
+		0, // no caching yet
+		4, // one ip address
+		[]byte{54, 183, 23, 203}} // california
 	return nil
 }
 
@@ -268,7 +267,7 @@ func (answer *dnsAnswer) writeToBytes() ([]byte, error) {
 }
 
 // handleRequest responds to the incoming udpPacket and returns the proper dns response
-func handleRequest(packet *udpPacket, name string, r router) *udpPacket {
+func handleRequest(packet *udpPacket, name string) *udpPacket {
 	// fmt.Println(packet)
 	var dns = &dnsPacket{}
 	var err = dns.parseDNS(packet.body)
@@ -278,7 +277,7 @@ func handleRequest(packet *udpPacket, name string, r router) *udpPacket {
 		return nil
 	}
 	fmt.Println("DNS Domain: ", byteArraysToDomain(dns.question.qname))
-	dns.queryDNSToAnswer(packet.addr.IP, r)
+	dns.queryDNSToAnswer()
 	packet.body, err = dns.dnsToBytes()
 	if errorCheck(err) {
 		return nil
@@ -334,12 +333,6 @@ func dnsServer(port int, name string) {
 	go udpSendSocket(connection, sendPackets, done)
 	go udpRecvSocket(connection, recvPackets)
 
-	var router = router{}
-	err = router.init(port)
-	if errorCheck(err) {
-		return
-	}
-
 	for {
 		select {
 		case sig := <-signals:
@@ -351,7 +344,7 @@ func dnsServer(port int, name string) {
 			if !ok {
 				return
 			}
-			var response = handleRequest(packet, name, router)
+			var response = handleRequest(packet, name)
 			if response != nil {
 				sendPackets <- response
 			}
