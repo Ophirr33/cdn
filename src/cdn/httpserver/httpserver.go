@@ -68,6 +68,7 @@ func handleConnection(
 	client *http.Client,
 	cache *cache,
 	cdnAddr net.IP) {
+	fmt.Println("Handling connection from:", connection.RemoteAddr)
 	defer connection.Close()
 	if cdnAddr.Equal(net.ParseIP(connection.LocalAddr().String())) || true { // TODO: REMOVE || TRUE (USED FOR TESTING)
 		pingServer := pingServer{connection}

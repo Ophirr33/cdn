@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"net"
 	"os"
@@ -12,8 +13,8 @@ type pingServer struct {
 	connection *net.TCPConn
 }
 
-func (ping *pingServer) start() {
-	connReader := bufio.NewReader(ping.connection)
+func (pingServer *pingServer) start() {
+	connReader := bufio.NewReader(pingServer.connection)
 	for {
 		line, err := connReader.ReadString('\n')
 		if errorCheck(err) {
@@ -24,13 +25,23 @@ func (ping *pingServer) start() {
 			fmt.Fprintln(os.Stderr, "Could not parse ip address, skipping")
 			continue
 		}
-		out, err := exec.Command(
-			"ping " + ip.String() + " -c 3 -l 3 | tail -1 | awk -F '/' '{print $5}'",
-		).Output()
+		ping := exec.Command("ping", ip.String(), "-c", "3", "-l", "3")
+
+		out, err := ping.Output()
 		if errorCheck(err) {
 			continue
 		}
-		fmt.Println(out, "should be on the same line")
-		ping.connection.Write(append([]byte(ip.String()+" "), append(out, '\n')...))
+		split1 := bytes.Fields(out)
+		if len(split1) != 7 {
+			fmt.Fprintln(os.Stderr, "Could not parse ping output: ", string(out))
+			continue
+		}
+		split2 := bytes.Fields(split1[3])
+		if len(split2) != 4 {
+			fmt.Fprintln(os.Stderr, "Could not parse ping average: ", string(out))
+			continue
+		}
+		avg := split2[1]
+		pingServer.connection.Write(append([]byte(ip.String()+" "), append(avg, '\n')...))
 	}
 }
