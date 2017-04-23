@@ -24,7 +24,7 @@ func errorCheck(err error) bool {
 
 // httpServer takes in the port and the url of the origin server
 // It initializes a tcp socket and spawns go routines to handle incoming connections
-func httpServer(port int, origin string, cache *cache) {
+func httpServer(port int, origin string, cache *cache, cdnAddr net.IP) {
 	var signals = make(chan os.Signal, 1)
 	var conns = make(chan *net.TCPConn, 1)
 	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM)
@@ -52,7 +52,7 @@ func httpServer(port int, origin string, cache *cache) {
 			if !ok {
 				return
 			}
-			go handleConnection(connection, origin, client, cache)
+			go handleConnection(connection, origin, client, cache, cdnAddr)
 		case <-signals:
 			listener.Close()
 			return
@@ -62,8 +62,18 @@ func httpServer(port int, origin string, cache *cache) {
 
 // handleConnection sends the incoming http request to the origin server
 // In the future it will filter incoming connections through a caching layer
-func handleConnection(connection *net.TCPConn, origin string, client *http.Client, cache *cache) {
+func handleConnection(
+	connection *net.TCPConn,
+	origin string,
+	client *http.Client,
+	cache *cache,
+	cdnAddr net.IP) {
 	defer connection.Close()
+	if cdnAddr.Equal(net.ParseIP(connection.LocalAddr().String())) || true { // TODO: REMOVE || TRUE (USED FOR TESTING)
+		pingServer := pingServer{connection}
+		pingServer.start()
+		return
+	}
 	req, err := http.ReadRequest(bufio.NewReader(connection))
 	if errorCheck(err) {
 		return
@@ -88,6 +98,18 @@ func handleConnection(connection *net.TCPConn, origin string, client *http.Clien
 	errorCheck(err)
 }
 
+// resolveCDNAddr gets the ip address of the cdn
+func resolveCDNAddr() (net.IP, error) {
+	ips, err := net.LookupIP("cs5700cdnproject.ccs.neu.edu")
+	if err != nil {
+		return nil, err
+	} else if len(ips) == 0 {
+		return nil, fmt.Errorf("No IPs returned")
+	} else {
+		return ips[0], nil
+	}
+}
+
 func main() {
 	defer os.Exit(0)
 
@@ -110,9 +132,13 @@ func main() {
 	}
 	var bytesInMegabyte uint = 1000000
 	cache := &cache{}
-	cache.init(10*bytesInMegabyte, 6*bytesInMegabyte) //TODO: PUT BACK AS 10
+	cache.init(10*bytesInMegabyte, 6*bytesInMegabyte)
 	go cache.buildCache(*origin, "popular.txt")
+	var cdnAddr net.IP
+	for addr, err := resolveCDNAddr(); !errorCheck(err); {
+		addr, err = resolveCDNAddr()
+	}
 	fmt.Println(*port, *origin)
-	httpServer(*port, *origin, cache)
+	httpServer(*port, *origin, cache, cdnAddr)
 	fmt.Println("Exiting...")
 }
