@@ -69,7 +69,7 @@ func handleConnection(
 	cache *cache,
 	cdnAddr net.IP) {
 	defer connection.Close()
-	if cdnAddr.Equal(net.ParseIP(connection.LocalAddr().String())) || true { // TODO: REMOVE || TRUE (USED FOR TESTING)
+	if cdnAddr.Equal(net.ParseIP(connection.LocalAddr().String())) {
 		pingServer := pingServer{connection}
 		pingServer.start()
 		return
