@@ -12,8 +12,8 @@ import (
 	"sync"
 )
 
-const ipSqlCommand string = "\"SELECT latitude, longitude FROM locations JOIN blocks on blocks.locId = locations.locId WHERE %d BETWEEN blocks.startIpNum AND blocks.endIpNum LIMIT 1;\""
-const dbName string = "locaiton.db"
+const ipSqlCommand string = "SELECT locations.latitude, locations.longitude FROM locations JOIN blocks ON blocks.locId = locations.locId WHERE %d BETWEEN blocks.startIpNum AND blocks.endIpNum LIMIT 1;"
+const dbName string = "locations.db"
 
 // contains lat long of the host as well as the persistent TCP connection
 type host struct {
@@ -76,7 +76,9 @@ func (r *router) getServer(ip string) string {
 	// if the client has never been seen before return closest server
 	if !exists || len(servers) == 0 {
 		result = r.getClosestServer(ip)
+		fmt.Println(result)
 	} else {
+		fmt.Println("Already in cache")
 		// otherwise return server with minimum weighted average rtt for client
 		var minRTT = 0.0
 		for server, rtt := range servers {

@@ -119,6 +119,7 @@ func byteArraysToDomain(b [][]byte) string {
 // queryDNSToAnswer initialize a default dns packet that points to california
 func (packet *dnsPacket) queryDNSToAnswer(ip net.IP, r router) error {
 	var returnIP = net.ParseIP(r.getServer(ip.String()))
+	fmt.Println(returnIP)
 	packet.qr = true
 	packet.aa = true
 	packet.ancount = 1
