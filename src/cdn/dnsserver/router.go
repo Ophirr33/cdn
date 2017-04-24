@@ -2,36 +2,48 @@ package main
 
 import (
 	"bufio"
+	"fmt"
 	"math"
 	"net"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 	"sync"
 )
 
+const ipSqlCommand string = "\"SELECT latitude, longitude FROM locations JOIN blocks on blocks.locId = locations.locId WHERE %d BETWEEN blocks.startIpNum AND blocks.endIpNum LIMIT 1;\""
+const dbName string = "locaiton.db"
+
+// contains lat long of the host as well as the persistent TCP connection
 type host struct {
 	loc  latLong
 	conn *net.TCPConn
 }
 
+// represents a latitude longitude pair
 type latLong struct {
 	lat  float64
 	long float64
 }
 
+// routing object for routing a client to an ec2 host
 type router struct {
-	hosts   map[string]host
-	clients map[string]map[string]float64
-	mutex   sync.Mutex
+	hosts   map[string]host               // host ips to host structs
+	clients map[string]map[string]float64 // client ips to host ips to weighted rtts
+	mutex   sync.Mutex                    // mutex lock for clients map
 }
 
+// initializes the router, given port should be the port ec2 http servers listen on
 func (r *router) init(port int) error {
 	r.hosts = make(map[string]host)
 	r.clients = make(map[string]map[string]float64)
 	return r.parseEC2AndConnect(port)
 }
 
+// parses the ec2-hosts.txt file
+// attempts to establish tcp connections with each host
+// starts up threads for reading from connections
 func (r *router) parseEC2AndConnect(port int) error {
 	file, err := os.Open("ec2-hosts.txt")
 	if err != nil {
@@ -57,12 +69,15 @@ func (r *router) parseEC2AndConnect(port int) error {
 	return nil
 }
 
+// gets the server ip to respond with for the given client ip
 func (r *router) getServer(ip string) string {
 	var servers, exists = r.clients[ip]
 	var result = ""
+	// if the client has never been seen before return closest server
 	if !exists || len(servers) == 0 {
 		result = r.getClosestServer(ip)
 	} else {
+		// otherwise return server with minimum weighted average rtt for client
 		var minRTT = 0.0
 		for server, rtt := range servers {
 			if minRTT == 0.0 || rtt < minRTT {
@@ -71,10 +86,12 @@ func (r *router) getServer(ip string) string {
 			}
 		}
 	}
+	// send out ping requests for client in another thread
 	go r.sendPingRequests(ip)
 	return result
 }
 
+// gets the closest server for the given client ip
 func (r *router) getClosestServer(ip string) string {
 	var loc = getLatLong(ip)
 	var minDistance = 0.0
@@ -89,6 +106,7 @@ func (r *router) getClosestServer(ip string) string {
 	return closest
 }
 
+// uses the haversine formula to determine distance between two lat-long points
 func distance(a, b latLong) float64 {
 	aLatRad := a.lat * math.Pi / 180
 	aLongRad := a.long * math.Pi / 180
@@ -103,12 +121,32 @@ func haversine(diff float64) float64 {
 	return math.Pow(math.Sin(diff/2), 2)
 }
 
+func ipStringToInt(ipstr string) int {
+	if ipstr == "" {
+		return 0
+	}
+	parts := strings.Split(ipstr, ".")
+	first, _ := strconv.ParseInt(parts[0], 10, 32)
+	second, _ := strconv.ParseInt(parts[1], 10, 32)
+	third, _ := strconv.ParseInt(parts[2], 10, 32)
+	fourth, _ := strconv.ParseInt(parts[3], 10, 32)
+	return int((first << 24) + (second << 16) + (third << 8) + fourth)
+}
+
+// gets the latitude and longitude for the given ip using external database
 func getLatLong(ip string) latLong {
-	var lat = 1.0
-	var long = 1.0
+	sqlite3 := exec.Command("sqlite3", dbName, fmt.Sprintf(ipSqlCommand, ipStringToInt(ip)))
+	out, err := sqlite3.Output()
+	if errorCheck(err) {
+		return latLong{0.0, 0.0}
+	}
+	latLongFields := strings.Split(string(out), "|")
+	lat, _ := strconv.ParseFloat(latLongFields[0], 64)
+	long, _ := strconv.ParseFloat(latLongFields[1], 64)
 	return latLong{lat, long}
 }
 
+// sends out requests for all ec2 hosts to ping the given ip
 func (r *router) sendPingRequests(ip string) {
 	var toSend = []byte(ip + "\n")
 	for _, host := range r.hosts {
@@ -124,8 +162,9 @@ func (r *router) getPingResponses(ip string) {
 		if errorCheck(err) {
 			break
 		}
-		var splitLine = strings.Fields(line)
+		var splitLine = strings.Fields(strings.Replace(line, "\n", "", -1))
 		if len(splitLine) != 2 {
+			fmt.Fprintln(os.Stderr, "Could not parse ping response for http server: ", ip)
 			continue
 		}
 		var clientIP = splitLine[0]
