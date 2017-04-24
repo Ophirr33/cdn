@@ -33,4 +33,4 @@ ssh $USER@$DOMAIN -i $IDENTITY -o StrictHostKeyChecking=no 'rm -rf gilpin-projec
   scp -3i $IDENTITY $USER@$CDN:/course/cs5700sp17/popular_raw.html $USER@$DOMAIN:gilpin-project5 &&
 
 # Make HTTP Server binary and clean up
-  ssh $USER@$DOMAIN -i $IDENTITY 'cd gilpin-project5 && mv Makefile-HTTP Makefile && python popular_to_text.py && rm *.html *.py && make && rm *.go Makefile'
+  ssh $USER@$DOMAIN -i $IDENTITY 'cd gilpin-project5 && mkdir .cache && mv Makefile-HTTP Makefile && python popular_to_text.py && rm *.html *.py && make && rm *.go Makefile'

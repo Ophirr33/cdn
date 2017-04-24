@@ -2,21 +2,14 @@ Ceridwen Driskill, Ty Coghlan
 
 Roll Your Own CDN
 
-We have implemented our DNS server and HTTP server in Go. At this point in time,
-the DNS server does not run on the DNS host because Go is not installed on that
-host. The HTTP server code does run on the ec2 hosts, however at the moment we
-are seeing a difference in the responses to curl and wget (curl has no problem
-getting the file from our HTTP server but wget gets a 404 not found). Caching is
-not currently implemented, so every request to the HTTP server causes a request
-to the origin server.
-
-Both of our servers use a multithreaded approach. For the DNS server, we create
-a UDP listener on the given port. Then we spawn two threads using this listener,
-one for sending and one for receiving. The receiving thread is constantly trying
-to read from the UDP listener (a blocking call). When a packet is read, it is
-written to the received packets channel. The sending thread is constantly trying
-to read from the sending channel. When a packet is read off of this channel, the
-sending thread writes the packet to the UDP object.
+We have implemented our DNS server and HTTP server in Go. Both of our servers use
+a multithreaded approach. For the DNS server, we create a UDP listener on the
+given port. Then we spawn two threads using this listener, one for sending and one
+for receiving. The receiving thread is constantly trying to read from the UDP
+listener (a blocking call). When a packet is read, it is written to the received
+packets channel. The sending thread is constantly trying to read from the sending
+channel. When a packet is read off of this channel, the sending thread writes the
+packet to the UDP object.
 
 For the HTTP server, we create a TCP listener, and an HTTP client (for making GET
 requests to the origin server). In another thread, the listener constantly tries
@@ -31,14 +24,29 @@ DNS struct which contains the DNS header fields applicable for this project, as
 well as one pointer for a DNS question, and one for a DNS answer (both structs
 that we have defined). We parse incoming DNS using a combination of the binary
 package, and bit manipulation with Go's built in byte slices. To write one of our
-DNS structs into bytes, we use do effectively the reverse of our parsing.
+DNS structs into bytes, we do effectively the reverse of our parsing.
 
-At the moment, we have not written a Makefile, as we have just been testing our
-code with the command: go run <script name> <arguments>, as it has been faster
-than compiling.
+Our HTTP server dynamically populates its cache using separate threads, which all
+exit once the disk quota and in-memory quotas have been reached. For IP address
+assignment in the DNS server, we initially use geolocation with the free Maxmind
+geolocation database. We use the haversine equation to calculate distance between
+lat-long points to determine the closest ec2 server. Whenever a client make a
+DNS request, our DNS server immediately responds based on the information it currently
+has. If it has never heard from the client before, it assigns it the geographically
+closest server. If it has heard from the client before, it assigns it the server that
+has the lowest weighted average rtt for that client. Whenever a client makes a DNS
+request, the DNS server asks all of the ec2 replicas to ping that client and send the
+DNS server the rtt. Handling of these rtt responses is done in another thread and has
+no impact on the immediate response given to the client for this request. When the
+DNS server gets these ping results back from the ec2 nodes, it adds them to the
+weighted average rtt for that client/server pair (weighted average in that a new
+rtt accounts for 50% of the weighted average). Ideally we would have extracted rtts
+from the TCP connections between clients and the HTTP servers, but we were unable to
+see a simple way of doing so in go.
 
-We pair program all of our projects, and this was no exception. I (Ceri) started
-out typing up our code for the DNS server, and typed most of that up until we
-finalized writing our DNS packets into bytes, at which point Ty took over. He
-typed up the rest of the DNS server, all of the HTTP server, and our quick little
-parser for the popular_raw.html file.
+We predominantly pair program all of our projects. For this project, the division of
+work mainly lies around the two server programs. Ceri handled much of the DNS server
+and it's decision process for sending a particular response to a client (though the
+measurement design etc. was discussed and decided on together), while Ty did much of
+the HTTP server and caching work. The deploy/run/stop scripts were quickly written
+together.

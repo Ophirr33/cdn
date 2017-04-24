@@ -86,9 +86,6 @@ func (cache *cache) addToDiskCache(path string, resp []byte) bool {
 // it returns whether it is in the memory or disk cache
 func (cache *cache) containsPath(path string) bool {
 	path = strings.ToLower(path)
-	if !cache.built {
-		return false
-	}
 	_, inMem := cache.memCache[path]
 	_, inDisk := cache.diskCache[path]
 	return inMem || inDisk
@@ -96,9 +93,6 @@ func (cache *cache) containsPath(path string) bool {
 
 // getFromCache returns the cached http response
 func (cache *cache) getFromCache(path string) (*http.Response, error) {
-	if !cache.built {
-		return nil, errors.New("Cache has not been built yet")
-	}
 	path = strings.ToLower(path)
 	if !cache.containsPath(path) {
 		return nil, errors.New("Cache does not contain path `" + path + "`")
@@ -130,43 +124,53 @@ func (cache *cache) buildCache(origin, popularFileName string) {
 		return
 	}
 	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	lines := make([]string, 0)
-	for scanner.Scan() {
-		path := strings.Fields(scanner.Text())[0]
-		if strings.HasPrefix(path, "/wiki") {
-			lines = append(lines, path)
+	getPool := make(chan string)
+	fullPool := make(chan bool)
+
+	go func() {
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			path := strings.Fields(scanner.Text())[0]
+			if strings.HasPrefix(path, "/wiki") {
+				getPool <- path
+			}
+			totalCapacity := cache.diskCacheSize + cache.memCacheSize
+			totalSize := cache.currentDiskCacheSize + cache.currentMemCacheSize
+			if totalCapacity-totalSize <= 100000 { //.1 MB
+				close(fullPool)
+				break
+			}
 		}
-	}
-	window := 15 // Number of parallel GETs
+	}()
+
+	window := 5 // Number of parallel GETs
 	mutex := sync.Mutex{}
 	client := http.Client{}
-	for i := 0; i < len(lines); i += window {
-		var wg sync.WaitGroup
-		itemsLeft := window
-		if len(lines)-i < window {
-			itemsLeft = len(lines) - i
-		}
-		wg.Add(itemsLeft)
-		for j := i; j < i+itemsLeft; j++ {
-			path := lines[j]
-			go func(path string) {
-				defer wg.Done()
-				resp, err := client.Get(origin + path)
-				if !errorCheck(err) && resp.StatusCode >= 200 && resp.StatusCode < 300 {
-					mutex.Lock()
-					cache.addToCache(path, resp)
-					mutex.Unlock()
+	var wg sync.WaitGroup
+	wg.Add(window)
+	for i := 0; i < window; i++ {
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case path := <-getPool:
+					resp, err := client.Get(origin + path)
+					if !errorCheck(err) && resp.StatusCode >= 200 && resp.StatusCode < 300 {
+						mutex.Lock()
+						if cache.addToCache(path, resp) {
+							fmt.Println("Added", path, "to cache")
+						}
+						mutex.Unlock()
+					}
+				case _, ok := <-fullPool:
+					if !ok {
+						return
+					}
 				}
-			}(path)
-		}
-		wg.Wait()
-		totalCapacity := cache.diskCacheSize + cache.memCacheSize
-		totalSize := cache.currentDiskCacheSize + cache.currentMemCacheSize
-		if totalCapacity-totalSize <= 100000 { //.1 MB
-			break
-		}
+			}
+		}()
 	}
+	wg.Wait()
 	cache.built = true // Allow the cache to be used
 	fmt.Println("Cache finished building")
 }

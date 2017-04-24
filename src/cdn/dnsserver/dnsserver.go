@@ -137,10 +137,12 @@ func (packet *dnsPacket) queryDNSToAnswer(ip net.IP, r router) error {
 
 // parseDNS parses a DNS packet from an array of bytes
 func (packet *dnsPacket) parseDNS(bytes []byte) error {
+	fmt.Println("BYTES: ", bytes)
 	if len(bytes) < 12 {
 		return errors.New("DNS packet must be at least 12 bytes.")
 	} else if bytes[3]&112 != 0 {
-		return errors.New("Invalid Z value found in packet. Z must be 0.")
+		// Because some people like to set this apparently...
+		errorCheck(errors.New("Invalid Z value found in packet. Z must be 0."))
 	}
 
 	// parsing header
