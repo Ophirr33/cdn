@@ -53,7 +53,7 @@ func (r *router) parseEC2AndConnect(port int) error {
 	var scanner = bufio.NewScanner(file)
 	for scanner.Scan() {
 		var text = scanner.Text()
-		if strings.Contains(text, "Origin") {
+		if strings.Contains(text, "Origin") || strings.HasPrefix(text, "#") {
 			continue
 		}
 		var line = strings.Split(text, "\t")

@@ -1,0 +1,59 @@
+#!/bin/bash
+
+PORT=""
+ORIGIN=""
+NAME=""
+USER=""
+IDENTITY=""
+CDN="cs5700cdnproject.ccs.neu.edu"
+
+while getopts "p:o:n:u:i:" opt; do
+  case $opt in
+    p)
+      PORT=$OPTARG
+      ;;
+    o)
+      ORIGIN=$OPTARG
+      ;;
+    n)
+      NAME=$OPTARG
+      ;;
+    u)
+      USER=$OPTARG
+      ;;
+    i)
+      IDENTITY=$OPTARG
+      ;;
+    \?)
+      echo "INVALID ARGUMENT"
+      exit 1
+      ;;
+  esac
+done
+
+
+# ========== DNS SERVER ============
+# CLEAN UP
+ssh $USER@$CDN -i $IDENTITY -o StrictHostKeyChecking=no 'rm -rf gilpin-project5 && mkdir gilpin-project5' &&
+
+# scp files
+  scp -i $IDENTITY src/cdn/dnsserver/* create_locations_db.sql download_and_create_db.sh Makefile-DNS $USER@$CDN:gilpin-project5 &&
+
+# download and build locations.db and make DNS binary and remove source code
+  ssh $USER@$CDN -i $IDENTITY 'cd gilpin-project5 && cp /course/cs5700sp17/ec2-hosts.txt . && bash download_and_create_db.sh && mv Makefile-DNS Makefile && make && rm *.go *.sh *.sql Makefile'
+
+# ========== HTTP SERVERS ==========
+# scp ec2-hosts to cwd
+scp -i $IDENTITY $USER@$CDN:/course/cs5700sp17/ec2-hosts.txt .
+
+# Parse ec2-hosts.txt and deploy to each server
+
+for line in $(tail -n +3 < ec2-hosts.txt | cut -f1)
+do
+  split=($line)
+  bash deployToSingleHttp.sh -u $USER -i $IDENTITY -d "${split[0]}" &
+done
+wait
+
+# remove ec2-hosts.txt
+rm ec2-hosts.txt

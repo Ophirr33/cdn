@@ -1,0 +1,49 @@
+#!/bin/bash
+
+PORT=""
+ORIGIN=""
+NAME=""
+USER=""
+IDENTITY=""
+CDN="cs5700cdnproject.ccs.neu.edu"
+
+while getopts "p:o:n:u:i:" opt; do
+  case $opt in
+    p)
+      PORT=$OPTARG
+      ;;
+    o)
+      ORIGIN=$OPTARG
+      ;;
+    n)
+      NAME=$OPTARG
+      ;;
+    u)
+      USER=$OPTARG
+      ;;
+    i)
+      IDENTITY=$OPTARG
+      ;;
+    \?)
+      echo "INVALID ARGUMENT"
+      exit 1
+      ;;
+  esac
+done
+# ========== HTTP SERVERS ==========
+# scp ec2-hosts to cwd
+scp -i $IDENTITY $USER@$CDN:/course/cs5700sp17/ec2-hosts.txt .
+
+# Parse ec2-hosts.txt and run each server
+for line in $(tail -n +3 < ec2-hosts.txt | cut -f1)
+do
+  split=($line)
+  bash stopSingleHttp.sh -u $USER -i $IDENTITY -d "${split[0]}" &
+done
+wait
+
+# ========== DNS SERVER ============
+ssh $USER@$CDN -i $IDENTITY -o StrictHostKeyChecking=no "cd gilpin-project5 && pkill -2 -f DNS_SERVER" &&
+
+# remove ec2-hosts.txt
+rm ec2-hosts.txt

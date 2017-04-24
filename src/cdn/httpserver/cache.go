@@ -138,7 +138,7 @@ func (cache *cache) buildCache(origin, popularFileName string) {
 			lines = append(lines, path)
 		}
 	}
-	window := 30 // Number of parallel GETs
+	window := 15 // Number of parallel GETs
 	mutex := sync.Mutex{}
 	client := http.Client{}
 	for i := 0; i < len(lines); i += window {
