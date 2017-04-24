@@ -118,8 +118,10 @@ func byteArraysToDomain(b [][]byte) string {
 
 // queryDNSToAnswer initialize a default dns packet that points to california
 func (packet *dnsPacket) queryDNSToAnswer(ip net.IP, r router) error {
-	var returnIP = net.ParseIP(r.getServer(ip.String()))
-	fmt.Println(returnIP)
+	var returnIP = net.ParseIP(r.getServer(ip.String())).To4()
+	if returnIP == nil {
+		return errors.New("Bad IP to return")
+	}
 	packet.qr = true
 	packet.aa = true
 	packet.ancount = 1
@@ -279,7 +281,10 @@ func handleRequest(packet *udpPacket, name string, r router) *udpPacket {
 		return nil
 	}
 	fmt.Println("DNS Domain: ", byteArraysToDomain(dns.question.qname))
-	dns.queryDNSToAnswer(packet.addr.IP, r)
+	err = dns.queryDNSToAnswer(packet.addr.IP, r)
+	if errorCheck(err) {
+		return nil
+	}
 	packet.body, err = dns.dnsToBytes()
 	if errorCheck(err) {
 		return nil
@@ -327,7 +332,7 @@ func dnsServer(port int, name string) {
 	var done = make(chan bool, 1)
 
 	// starting up udp socket, read and write operations done in other threads
-	var connection, err = net.ListenUDP("udp", &(net.UDPAddr{Port: port}))
+	var connection, err = net.ListenUDP("udp4", &(net.UDPAddr{Port: port}))
 	if errorCheck(err) {
 		return
 	}
@@ -347,9 +352,11 @@ func dnsServer(port int, name string) {
 			fmt.Println("Caught signal: ", sig)
 			return
 		case <-done:
+			fmt.Println("done caught")
 			return
 		case packet, ok := <-recvPackets:
 			if !ok {
+				fmt.Println("Error in listening socket")
 				return
 			}
 			var response = handleRequest(packet, name, router)

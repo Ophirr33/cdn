@@ -76,9 +76,7 @@ func (r *router) getServer(ip string) string {
 	// if the client has never been seen before return closest server
 	if !exists || len(servers) == 0 {
 		result = r.getClosestServer(ip)
-		fmt.Println(result)
 	} else {
-		fmt.Println("Already in cache")
 		// otherwise return server with minimum weighted average rtt for client
 		var minRTT = 0.0
 		for server, rtt := range servers {
@@ -128,23 +126,38 @@ func ipStringToInt(ipstr string) int {
 		return 0
 	}
 	parts := strings.Split(ipstr, ".")
-	first, _ := strconv.ParseInt(parts[0], 10, 32)
-	second, _ := strconv.ParseInt(parts[1], 10, 32)
-	third, _ := strconv.ParseInt(parts[2], 10, 32)
-	fourth, _ := strconv.ParseInt(parts[3], 10, 32)
+	if len(parts) != 4 {
+		fmt.Fprintln(os.Stderr, "Encountered non-ipv4 address:", ipstr)
+		return -1
+	}
+	first, err := strconv.ParseInt(parts[0], 10, 32)
+	second, err2 := strconv.ParseInt(parts[1], 10, 32)
+	third, err3 := strconv.ParseInt(parts[2], 10, 32)
+	fourth, err4 := strconv.ParseInt(parts[3], 10, 32)
+	if errorCheck(err) || errorCheck(err2) || errorCheck(err3) || errorCheck(err4) {
+		return -1
+	}
 	return int((first << 24) + (second << 16) + (third << 8) + fourth)
 }
 
 // gets the latitude and longitude for the given ip using external database
 func getLatLong(ip string) latLong {
-	sqlite3 := exec.Command("sqlite3", dbName, fmt.Sprintf(ipSqlCommand, ipStringToInt(ip)))
+	ipInt := ipStringToInt(ip)
+	sqlite3 := exec.Command("sqlite3", dbName, fmt.Sprintf(ipSqlCommand, ipInt))
 	out, err := sqlite3.Output()
 	if errorCheck(err) {
 		return latLong{0.0, 0.0}
 	}
 	latLongFields := strings.Split(string(out), "|")
-	lat, _ := strconv.ParseFloat(latLongFields[0], 64)
-	long, _ := strconv.ParseFloat(latLongFields[1], 64)
+	if len(latLongFields) != 2 {
+		fmt.Println("No suitable lat long found for", ip)
+		return latLong{0.0, 0.0}
+	}
+	lat, err1 := strconv.ParseFloat(strings.TrimSpace(latLongFields[0]), 64)
+	long, err2 := strconv.ParseFloat(strings.TrimSpace(latLongFields[1]), 64)
+	if errorCheck(err1) || errorCheck(err2) {
+		return latLong{0.0, 0.0}
+	}
 	return latLong{lat, long}
 }
 
