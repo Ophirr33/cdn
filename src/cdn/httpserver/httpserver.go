@@ -124,11 +124,17 @@ func main() {
 			errMsg += "Port number must be provided. "
 		}
 		if *origin == "" {
-			errMsg += "Origin URL must be provided as a non-empty string. e.g., http://origin.com:8080"
+			errMsg += "Origin URL must be provided as a non-empty string. e.g., origin.com"
 		}
 		if errorCheck(errors.New(errMsg)) {
 			return
 		}
+	}
+	if !strings.HasPrefix(*origin, "http://") {
+		*origin = "http://" + *origin
+	}
+	if !strings.HasSuffix(*origin, ":8080") {
+		*origin += ":8080"
 	}
 	var bytesInMegabyte uint = 1000000
 	cache := &cache{}
@@ -141,7 +147,6 @@ func main() {
 		if !errorCheck(err) {
 			break
 		}
-		fmt.Println("Loop")
 	}
 	fmt.Println(*port, *origin)
 	httpServer(*port, *origin, cache, cdnAddr)
